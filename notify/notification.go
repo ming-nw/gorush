@@ -117,7 +117,7 @@ type PushNotification struct {
 	SoundVolume float32  `json:"volume,omitempty"`
 	Apns        D        `json:"apns,omitempty"`
 	InteruptionLevel string `json:"interruption-level,omitempty"`
-	RelevanceScore float32 `json:"relevance-store,omitempty"`
+	RelevanceScore float32 `json:"relevance-score,omitempty"`
 }
 
 // Bytes for queue message
