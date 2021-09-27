@@ -435,6 +435,8 @@ github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg
 github.com/shurcooL/sanitized_anchor_name v1.0.0/go.mod h1:1NzhyTcUVG4SuEtjjoZeVRXNmyL/1OwPU0+IJeTBvfc=
 github.com/sideshow/apns2 v0.20.0 h1:5Lzk4DUq+waVc6/BkKzpDTpQjtk/BZOP0YsayBpY1NE=
 github.com/sideshow/apns2 v0.20.0/go.mod h1:f7dArLPLbiZ3qPdzzrZXdCSlMp8FD0p6z7tHssDOLvk=
+github.com/sideshow/apns2 v0.20.1-0.20210922004903-9c1d7c676646 h1:uTyP3ju6b89mccpHy0J/+Sy6zM9HNYPiWctQ4W4xAs4=
+github.com/sideshow/apns2 v0.20.1-0.20210922004903-9c1d7c676646/go.mod h1:f7dArLPLbiZ3qPdzzrZXdCSlMp8FD0p6z7tHssDOLvk=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrfsX/uA88=

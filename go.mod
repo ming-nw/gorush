@@ -25,7 +25,7 @@ require (
 	github.com/msalihkarakasli/go-hms-push v0.0.0-20210731212030-00e7b986815b
 	github.com/prometheus/client_golang v1.10.0
 	github.com/rs/zerolog v1.23.0
-	github.com/sideshow/apns2 v0.20.0
+	github.com/sideshow/apns2 v0.20.1-0.20210922004903-9c1d7c676646
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/viper v1.7.1
 	github.com/stretchr/testify v1.7.0

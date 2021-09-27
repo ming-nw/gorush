@@ -213,10 +213,14 @@ Retry:
 	// Huawei Push Send API does not support exact results for each token
 	if res.Code == "80000000" {
 		status.StatStorage.AddHuaweiSuccess(int64(1))
+		errLog := logPush(cfg, core.SucceededPush, req.To, req, nil)
+		resp.Logs = append(resp.Logs, errLog)
 		logx.LogAccess.Debug("Huwaei Send Notification is completed successfully!")
 	} else {
 		isError = true
 		status.StatStorage.AddHuaweiError(int64(1))
+		errLog := logPush(cfg, core.FailedPush, req.To, req, nil);
+		resp.Logs = append(resp.Logs, errLog)
 		logx.LogAccess.Debug("Huawei Send Notification is failed! Code: " + res.Code)
 	}
 

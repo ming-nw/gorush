@@ -360,6 +360,17 @@ func GetIOSNotification(req *PushNotification) *apns2.Notification {
 		payload.ThreadID(req.ThreadID)
 	}
 
+	// support time sensitive as for now
+	if len(req.InteruptionLevel) > 0 {
+		if (req.InteruptionLevel == "time-sensitive") {
+			payload.InterruptionLevel("time-sensitive")
+		}
+	}
+
+	if req.RelevanceScore > 0 {
+		payload.RelevanceScore(req.RelevanceScore)
+	}
+
 	for k, v := range req.Data {
 		payload.Custom(k, v)
 	}
