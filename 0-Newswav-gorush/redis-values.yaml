@@ -1,0 +1,28 @@
+image:
+  registry: docker.io
+  repository: bitnami/redis
+  tag: latest
+
+#Allowed values: `standalone` or `replication`
+architecture: standalone
+
+auth:
+  ## @param auth.enabled Enable password authentication
+  ##
+  enabled: false
+
+master:
+  resources:
+    limits: 
+      cpu: 200m 
+      memory: 200Mi
+    requests: 
+      cpu: 50m
+      memory: 50Mi
+
+  persistence:
+    ## @param master.persistence.enabled Enable persistence on Redis&reg; master nodes using Persistent Volume Claims
+    ##
+    enabled: false
+    storageClass: "standard"
+    size: 2Gi

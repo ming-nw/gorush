@@ -1,0 +1,63 @@
+#COMMENT-SVC 
+#DEPLOYMENT
+fullnameOverride: misc-gorush
+nameOverride: misc-gorush
+replicaCount: 10
+tier: frontend
+namespace: gorush
+
+image:
+  repository: asia.gcr.io/bustling-sunset-220007/newswav-gorush
+  tag: nw-v1.0.1
+
+resources:
+  limits:
+    memory: 500Mi
+    cpu: "500m"
+  requests:
+    memory: 10Mi
+    cpu: "5m"
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8088
+  initialDelaySeconds: 5
+  periodSeconds: 30
+  timeoutSeconds: 10
+
+livenessProbe:
+  httpGet:
+      path: /healthz
+      port: 8088
+  initialDelaySeconds: 5
+  periodSeconds: 60
+  timeoutSeconds: 30
+
+envFrom:
+  - configMapRef:
+      name: gorush-config
+
+appContainerPort: 8088
+
+#SERVICE
+service:
+  enabled: true
+  type: NodePort
+  port: 80
+
+#ingress
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: misc-gorush-ingress-ip
+  tls: 
+   -  secretName: ssl-wildcard-newswav
+      hosts:
+        - misc-gorush.newswav.com
+
+  hosts:
+  - host: misc-gorush.newswav.com
+    paths:
+      - path: /
+        pathType: Prefix
