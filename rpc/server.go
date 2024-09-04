@@ -2,7 +2,10 @@ package rpc
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
 	"net"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -12,8 +15,13 @@ import (
 	"github.com/appleboy/gorush/notify"
 	"github.com/appleboy/gorush/rpc/proto"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"go.opencensus.io/plugin/ocgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
@@ -56,12 +64,12 @@ func (s *Server) Check(ctx context.Context, in *proto.HealthCheckRequest) (*prot
 func (s *Server) Send(ctx context.Context, in *proto.NotificationRequest) (*proto.NotificationReply, error) {
 	badge := int(in.Badge)
 	notification := notify.PushNotification{
+		ID:               in.ID,
 		Platform:         int(in.Platform),
 		Tokens:           in.Tokens,
 		Message:          in.Message,
 		Title:            in.Title,
 		Topic:            in.Topic,
-		APIKey:           in.Key,
 		Category:         in.Category,
 		Sound:            in.Sound,
 		ContentAvailable: in.ContentAvailable,
@@ -69,6 +77,8 @@ func (s *Server) Send(ctx context.Context, in *proto.NotificationRequest) (*prot
 		MutableContent:   in.MutableContent,
 		Image:            in.Image,
 		Priority:         strings.ToLower(in.GetPriority().String()),
+		PushType:         in.PushType,
+		Development:      in.Development,
 	}
 
 	if badge > 0 {
@@ -76,7 +86,7 @@ func (s *Server) Send(ctx context.Context, in *proto.NotificationRequest) (*prot
 	}
 
 	if in.Topic != "" && in.Platform == core.PlatFormAndroid {
-		notification.To = in.Topic
+		notification.Topic = in.Topic
 	}
 
 	if in.Alert != nil {
@@ -95,14 +105,12 @@ func (s *Server) Send(ctx context.Context, in *proto.NotificationRequest) (*prot
 	}
 
 	if in.Data != nil {
-		notification.Data = map[string]interface{}{}
-		for k, v := range in.Data.Fields {
-			notification.Data[k] = v
-		}
+		notification.Data = in.Data.AsMap()
 	}
 
 	go func() {
-		_, err := notify.SendNotification(&notification, s.cfg)
+		ctx := context.Background()
+		_, err := notify.SendNotification(ctx, &notification, s.cfg)
 		if err != nil {
 			logx.LogError.Error(err)
 		}
@@ -121,7 +129,45 @@ func RunGRPCServer(ctx context.Context, cfg *config.ConfYaml) error {
 		return nil
 	}
 
-	s := grpc.NewServer()
+	recoveryOpt := grpc_recovery.WithRecoveryHandlerContext(
+		func(ctx context.Context, p interface{}) error {
+			fmt.Printf("[PANIC] %s\n%s", p, string(debug.Stack()))
+			return status.Error(codes.Internal, "system has been broken")
+		},
+	)
+
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		grpc_prometheus.UnaryServerInterceptor,
+		grpc_recovery.UnaryServerInterceptor(recoveryOpt),
+	}
+
+	var s *grpc.Server
+
+	if cfg.Core.SSL && cfg.Core.CertPath != "" && cfg.Core.KeyPath != "" {
+		tlsCert, err := tls.LoadX509KeyPair(cfg.Core.CertPath, cfg.Core.KeyPath)
+		if err != nil {
+			logx.LogError.Error("failed to load tls cert file: ", err)
+			return err
+		}
+
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{tlsCert},
+			ClientAuth:   tls.NoClientCert,
+			MinVersion:   tls.VersionTLS12, // Set minimum TLS version to TLS 1.2
+		}
+
+		s = grpc.NewServer(
+			grpc.Creds(credentials.NewTLS(tlsConfig)),
+			grpc.StatsHandler(&ocgrpc.ServerHandler{}),
+			grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(unaryInterceptors...)),
+		)
+	} else {
+		s = grpc.NewServer(
+			grpc.StatsHandler(&ocgrpc.ServerHandler{}),
+			grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(unaryInterceptors...)),
+		)
+	}
+
 	rpcSrv := NewServer(cfg)
 	proto.RegisterGorushServer(s, rpcSrv)
 	proto.RegisterHealthServer(s, rpcSrv)

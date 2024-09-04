@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/appleboy/gorush/config"
+	"github.com/appleboy/gorush/core"
 	"github.com/appleboy/gorush/logx"
-	"github.com/appleboy/gorush/storage"
 	"github.com/appleboy/gorush/storage/badger"
 	"github.com/appleboy/gorush/storage/boltdb"
 	"github.com/appleboy/gorush/storage/buntdb"
@@ -20,17 +20,19 @@ import (
 var Stats *stats.Stats
 
 // StatStorage implements the storage interface
-var StatStorage storage.Storage
+var StatStorage *StateStorage
 
 // App is status structure
 type App struct {
-	Version    string        `json:"version"`
-	QueueMax   int           `json:"queue_max"`
-	QueueUsage int           `json:"queue_usage"`
-	TotalCount int64         `json:"total_count"`
-	Ios        IosStatus     `json:"ios"`
-	Android    AndroidStatus `json:"android"`
-	Huawei     HuaweiStatus  `json:"huawei"`
+	Version        string        `json:"version"`
+	BusyWorkers    int           `json:"busy_workers"`
+	SuccessTasks   int           `json:"success_tasks"`
+	FailureTasks   int           `json:"failure_tasks"`
+	SubmittedTasks int           `json:"submitted_tasks"`
+	TotalCount     int64         `json:"total_count"`
+	Ios            IosStatus     `json:"ios"`
+	Android        AndroidStatus `json:"android"`
+	Huawei         HuaweiStatus  `json:"huawei"`
 }
 
 // AndroidStatus is android structure
@@ -54,23 +56,42 @@ type HuaweiStatus struct {
 // InitAppStatus for initialize app status
 func InitAppStatus(conf *config.ConfYaml) error {
 	logx.LogAccess.Info("Init App Status Engine as ", conf.Stat.Engine)
+
+	var store core.Storage
+	//nolint:goconst
 	switch conf.Stat.Engine {
 	case "memory":
-		StatStorage = memory.New()
+		store = memory.New()
 	case "redis":
-		StatStorage = redis.New(conf)
+		store = redis.New(
+			conf.Stat.Redis.Addr,
+			conf.Stat.Redis.Password,
+			conf.Stat.Redis.DB,
+			conf.Stat.Redis.Cluster,
+		)
 	case "boltdb":
-		StatStorage = boltdb.New(conf)
+		store = boltdb.New(
+			conf.Stat.BoltDB.Path,
+			conf.Stat.BoltDB.Bucket,
+		)
 	case "buntdb":
-		StatStorage = buntdb.New(conf)
+		store = buntdb.New(
+			conf.Stat.BuntDB.Path,
+		)
 	case "leveldb":
-		StatStorage = leveldb.New(conf)
+		store = leveldb.New(
+			conf.Stat.LevelDB.Path,
+		)
 	case "badger":
-		StatStorage = badger.New(conf)
+		store = badger.New(
+			conf.Stat.BadgerDB.Path,
+		)
 	default:
 		logx.LogError.Error("storage error: can't find storage driver")
 		return errors.New("can't find storage driver")
 	}
+
+	StatStorage = NewStateStorage(store)
 
 	if err := StatStorage.Init(); err != nil {
 		logx.LogError.Error("storage error: " + err.Error())

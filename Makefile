@@ -10,8 +10,10 @@ TARGETS ?= linux darwin windows
 ARCHS ?= amd64
 GOFILES := $(shell find . -name "*.go" -type f)
 TAGS ?= sqlite
-LDFLAGS ?= -X 'main.Version=$(VERSION)'
-NODE_PROTOC_PLUGIN := $(shell which grpc_tools_node_protoc_plugin)
+LDFLAGS ?= -X main.version=$(VERSION) -X main.commit=$(COMMIT)
+
+PROTOC_GEN_GO=v1.28
+PROTOC_GEN_GO_GRPC=v1.2
 
 ifneq ($(shell uname), Darwin)
 	EXTLDFLAGS = -extldflags "-static" $(null)
@@ -25,38 +27,21 @@ else
 	VERSION ?= $(shell git describe --tags --always || git rev-parse --short HEAD)
 endif
 
+COMMIT ?= $(shell git rev-parse --short HEAD)
+
 .PHONY: all
 all: build
 
 init:
-ifeq ($(ANDROID_API_KEY),)
-	@echo "Missing ANDROID_API_KEY Parameter"
+ifeq ($(FCM_CREDENTIAL),)
+	@echo "Missing FCM_CREDENTIAL Parameter"
 	@exit 1
 endif
-ifeq ($(ANDROID_TEST_TOKEN),)
-	@echo "Missing ANDROID_TEST_TOKEN Parameter"
+ifeq ($(FCM_TEST_TOKEN),)
+	@echo "Missing FCM_TEST_TOKEN Parameter"
 	@exit 1
 endif
-	@echo "Already set ANDROID_API_KEY and ANDROID_TEST_TOKEN globale variable."
-
-.PHONY: fmt
-fmt:
-	@hash gofumpt > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		$(GO) install mvdan.cc/gofumpt@v0.1.1; \
-	fi
-	$(GOFMT) -w $(GOFILES)
-
-.PHONY: fmt-check
-fmt-check:
-	@hash gofumpt > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		$(GO) install mvdan.cc/gofumpt@v0.1.1; \
-	fi
-	@diff=$$($(GOFMT) -d $(GOFILES)); \
-	if [ -n "$$diff" ]; then \
-		echo "Please run 'make fmt' and commit the result:"; \
-		echo "$${diff}"; \
-		exit 1; \
-	fi;
+	@echo "Already set FCM_CREDENTIAL and endif global variable."
 
 vet:
 	$(GO) vet ./...
@@ -66,12 +51,6 @@ embedmd:
 		$(GO) install github.com/campoy/embedmd@master; \
 	fi
 	embedmd -d *.md
-
-lint:
-	@hash revive > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		$(GO) install github.com/mgechev/revive@v1.0.5; \
-	fi
-	revive -config .revive.toml ./... || exit 1
 
 .PHONY: install
 install: $(GOFILES)
@@ -85,22 +64,8 @@ build: $(EXECUTABLE)
 $(EXECUTABLE): $(GOFILES)
 	$(GO) build -v -tags '$(TAGS)' -ldflags '$(EXTLDFLAGS)-s -w $(LDFLAGS)' -o release/$@
 
-.PHONY: misspell-check
-misspell-check:
-	@hash misspell > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		$(GO) install github.com/client9/misspell/cmd/misspell@v0.3.4; \
-	fi
-	misspell -error $(GOFILES)
-
-.PHONY: misspell
-misspell:
-	@hash misspell > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		$(GO) install github.com/client9/misspell/cmd/misspell@v0.3.4; \
-	fi
-	misspell -w $(GOFILES)
-
 .PHONY: test
-test: init fmt-check
+test: init
 	@$(GO) test -v -cover -tags $(TAGS) -coverprofile coverage.txt ./... && echo "\n==>\033[32m Ok\033[m\n" || exit 1
 
 release: release-dirs release-build release-copy release-compress release-check
@@ -142,6 +107,21 @@ build_linux_arm:
 build_linux_lambda:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -tags 'lambda' -ldflags '$(EXTLDFLAGS)-s -w $(LDFLAGS)' -o release/linux/lambda/$(DEPLOY_IMAGE)
 
+build_darwin_amd64:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -a -tags '$(TAGS)' -ldflags '$(EXTLDFLAGS)-s -w $(LDFLAGS)' -o release/darwin/amd64/$(DEPLOY_IMAGE)
+
+build_darwin_i386:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=386 go build -a -tags '$(TAGS)' -ldflags '$(EXTLDFLAGS)-s -w $(LDFLAGS)' -o release/darwin/i386/$(DEPLOY_IMAGE)
+
+build_darwin_arm64:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -a -tags '$(TAGS)' -ldflags '$(EXTLDFLAGS)-s -w $(LDFLAGS)' -o release/darwin/arm64/$(DEPLOY_IMAGE)
+
+build_darwin_arm:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm GOARM=7 go build -a -tags '$(TAGS)' -ldflags '$(EXTLDFLAGS)-s -w $(LDFLAGS)' -o release/darwin/arm/$(DEPLOY_IMAGE)
+
+build_darwin_lambda:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -a -tags 'lambda' -ldflags '$(EXTLDFLAGS)-s -w $(LDFLAGS)' -o release/darwin/lambda/$(DEPLOY_IMAGE)
+
 clean:
 	$(GO) clean -modcache -x -i ./...
 	find . -name coverage.txt -delete
@@ -149,16 +129,31 @@ clean:
 	find . -name *.db -delete
 	-rm -rf release dist .cover
 
-rpc/example/node/gorush_*_pb.js: rpc/proto/gorush.proto
-	@hash grpc_tools_node_protoc_plugin > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		npm install -g grpc-tools; \
+.PHONY: proto_install
+proto_install:
+	$(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO)
+	$(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC)
+
+generate_proto_js:
+	npm install grpc-tools
+	protoc -I rpc/proto rpc/proto/gorush.proto --js_out=import_style=commonjs,binary:rpc/example/node/ --grpc_out=rpc/example/node/ --plugin=protoc-gen-grpc="node_modules/.bin/grpc_tools_node_protoc_plugin"
+
+generate_proto_go:
+	protoc -I rpc/proto rpc/proto/gorush.proto --go_out=rpc/proto --go-grpc_out=require_unimplemented_servers=false:rpc/proto
+
+generate_proto: generate_proto_go generate_proto_js
+
+# install air command
+.PHONY: air
+air:
+	@hash air > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+		$(GO) install github.com/cosmtrek/air@latest; \
 	fi
-	protoc -I rpc/proto rpc/proto/gorush.proto --js_out=import_style=commonjs,binary:rpc/example/node/ --grpc_out=rpc/example/node/ --plugin=protoc-gen-grpc=$(NODE_PROTOC_PLUGIN)
 
-rpc/proto/gorush.pb.go: rpc/proto/gorush.proto
-	protoc -I rpc/proto rpc/proto/gorush.proto --go_out=plugins=grpc:rpc/proto
-
-generate_proto: rpc/proto/gorush.pb.go rpc/example/node/gorush_*_pb.js
+# run air
+.PHONY: dev
+dev: air
+	air --build.cmd "make" --build.bin release/gorush
 
 version:
 	@echo $(VERSION)
