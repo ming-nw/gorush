@@ -7,8 +7,8 @@ tier: frontend
 namespace: gorush
 
 image:
-  repository: asia.gcr.io/bustling-sunset-220007/newswav-gorush 
-  tag: nw-v1.0.1
+  repository: asia.gcr.io/bustling-sunset-220007/newswav-gorush
+  tag: nw-v1.18
 
 resources:
   limits:
@@ -37,6 +37,8 @@ livenessProbe:
 envFrom:
   - configMapRef:
       name: gorush-config
+  - secretRef:
+      name: gorush-gcpsm
 
 appContainerPort: 8088
 
