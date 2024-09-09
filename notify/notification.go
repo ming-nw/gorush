@@ -6,16 +6,15 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/appleboy/gorush/config"
 	"github.com/appleboy/gorush/core"
 	"github.com/appleboy/gorush/logx"
 
-	"github.com/appleboy/go-fcm"
-	"github.com/golang-queue/queue"
+	"firebase.google.com/go/v4/messaging"
+	"github.com/appleboy/go-hms-push/push/model"
+	qcore "github.com/golang-queue/queue/core"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/msalihkarakasli/go-hms-push/push/model"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -67,6 +66,8 @@ type ResponsePush struct {
 type PushNotification struct {
 	// Common
 	ID               string      `json:"notif_id,omitempty"`
+	To               string      `json:"to,omitempty"`
+	Topic            string      `json:"topic,omitempty"` // FCM and iOS only
 	Tokens           []string    `json:"tokens" binding:"required"`
 	Platform         int         `json:"platform" binding:"required"`
 	Message          string      `json:"message,omitempty"`
@@ -80,15 +81,12 @@ type PushNotification struct {
 	Retry            int         `json:"retry,omitempty"`
 
 	// Android
-	APIKey                string            `json:"api_key,omitempty"`
-	To                    string            `json:"to,omitempty"`
-	CollapseKey           string            `json:"collapse_key,omitempty"`
-	DelayWhileIdle        bool              `json:"delay_while_idle,omitempty"`
-	TimeToLive            *uint             `json:"time_to_live,omitempty"`
-	RestrictedPackageName string            `json:"restricted_package_name,omitempty"`
-	DryRun                bool              `json:"dry_run,omitempty"`
-	Condition             string            `json:"condition,omitempty"`
-	Notification          *fcm.Notification `json:"notification,omitempty"`
+	Notification *messaging.Notification  `json:"notification,omitempty"`
+	Android      *messaging.AndroidConfig `json:"android,omitempty"`
+	Webpush      *messaging.WebpushConfig `json:"webpush,omitempty"`
+	APNS         *messaging.APNSConfig    `json:"apns,omitempty"`
+	FCMOptions   *messaging.FCMOptions    `json:"fcm_options,omitempty"`
+	Condition    string                   `json:"condition,omitempty"`
 
 	// Huawei
 	AppID              string                     `json:"app_id,omitempty"`
@@ -104,7 +102,6 @@ type PushNotification struct {
 	Expiration  *int64   `json:"expiration,omitempty"`
 	ApnsID      string   `json:"apns_id,omitempty"`
 	CollapseID  string   `json:"collapse_id,omitempty"`
-	Topic       string   `json:"topic,omitempty"`
 	PushType    string   `json:"push_type,omitempty"`
 	Badge       *int     `json:"badge,omitempty"`
 	Category    string   `json:"category,omitempty"`
@@ -115,9 +112,17 @@ type PushNotification struct {
 	Development bool     `json:"development,omitempty"`
 	SoundName   string   `json:"name,omitempty"`
 	SoundVolume float32  `json:"volume,omitempty"`
-	Apns        D        `json:"apns,omitempty"`
-	InteruptionLevel string `json:"interruption-level,omitempty"`
-	RelevanceScore float32 `json:"relevance-score,omitempty"`
+
+	// ref: https://github.com/sideshow/apns2/blob/54928d6193dfe300b6b88dad72b7e2ae138d4f0a/payload/builder.go#L7-L24
+	InterruptionLevel string `json:"interruption_level,omitempty"`
+
+	// live-activity support
+	// ref: https://developer.apple.com/documentation/activitykit/updating-and-ending-your-live-activity-with-activitykit-push-notifications
+	ContentState  D      `json:"content-state,omitempty"`
+	StaleDate     int64  `json:"stale-date,omitempty"`
+	DismissalDate int64  `json:"dismissal-date"`
+	Event         string `json:"event,omitempty"`
+	Timestamp     int64  `json:"timestamp,omitempty"`
 }
 
 // Bytes for queue message
@@ -132,11 +137,7 @@ func (p *PushNotification) Bytes() []byte {
 // IsTopic check if message format is topic for FCM
 // ref: https://firebase.google.com/docs/cloud-messaging/send-message#topic-http-post-request
 func (p *PushNotification) IsTopic() bool {
-	if p.Platform == core.PlatFormAndroid {
-		return p.To != "" && strings.HasPrefix(p.To, "/topics/") || p.Condition != ""
-	}
-
-	if p.Platform == core.PlatFormHuawei {
+	if p.Platform == core.PlatFormHuawei || p.Platform == core.PlatFormAndroid {
 		return p.Topic != "" || p.Condition != ""
 	}
 
@@ -147,37 +148,31 @@ func (p *PushNotification) IsTopic() bool {
 func CheckMessage(req *PushNotification) error {
 	var msg string
 
-	// ignore send topic mesaage from FCM
-	if !req.IsTopic() && len(req.Tokens) == 0 && req.To == "" {
-		msg = "the message must specify at least one registration ID"
-		logx.LogAccess.Debug(msg)
-		return errors.New(msg)
+	if req.To != "" {
+		req.Tokens = append(req.Tokens, req.To)
 	}
 
-	if len(req.Tokens) == core.PlatFormIos && req.Tokens[0] == "" {
-		msg = "the token must not be empty"
-		logx.LogAccess.Debug(msg)
-		return errors.New(msg)
+	// if the message is a topic, the tokens field is not required
+	if !req.IsTopic() && len(req.Tokens) == 0 {
+		return errors.New("tokens must not be nil or empty")
 	}
 
-	if req.Platform == core.PlatFormAndroid && len(req.Tokens) > 1000 {
-		msg = "the message may specify at most 1000 registration IDs"
-		logx.LogAccess.Debug(msg)
-		return errors.New(msg)
-	}
-
-	if req.Platform == core.PlatFormHuawei && len(req.Tokens) > 500 {
-		msg = "the message may specify at most 500 registration IDs for Huawei"
-		logx.LogAccess.Debug(msg)
-		return errors.New(msg)
-	}
-
-	// ref: https://firebase.google.com/docs/cloud-messaging/http-server-ref
-	if req.Platform == core.PlatFormAndroid && req.TimeToLive != nil && *req.TimeToLive > uint(2419200) {
-		msg = "the message's TimeToLive field must be an integer " +
-			"between 0 and 2419200 (4 weeks)"
-		logx.LogAccess.Debug(msg)
-		return errors.New(msg)
+	switch req.Platform {
+	case core.PlatFormIos:
+		if len(req.Tokens) == 1 && req.Tokens[0] == "" {
+			msg = "the token must not be empty"
+			logx.LogAccess.Debug(msg)
+			return errors.New(msg)
+		}
+	case
+		core.PlatFormAndroid,
+		core.PlatFormHuawei:
+		if len(req.Tokens) > 500 {
+			msg = "tokens must not contain more than 500 elements"
+			logx.LogAccess.Debug(msg)
+			return errors.New(msg)
+		}
+	default:
 	}
 
 	return nil
@@ -216,58 +211,65 @@ func CheckPushConf(cfg *config.ConfYaml) error {
 	}
 
 	if cfg.Android.Enabled {
-		if cfg.Android.APIKey == "" {
-			return errors.New("Missing Android API Key")
+		credential := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+		if cfg.Android.Credential == "" &&
+			cfg.Android.KeyPath == "" &&
+			credential == "" {
+			return errors.New("missing fcm credential data")
 		}
 	}
 
 	if cfg.Huawei.Enabled {
 		if cfg.Huawei.AppSecret == "" {
-			return errors.New("Missing Huawei App Secret")
+			return errors.New("missing huawei app secret")
 		}
 
 		if cfg.Huawei.AppID == "" {
-			return errors.New("Missing Huawei App ID")
+			return errors.New("missing huawei app id")
 		}
 	}
 
 	return nil
 }
 
-// SendNotification send notification
-func SendNotification(req queue.QueuedMessage, cfg *config.ConfYaml) (resp *ResponsePush, err error) {
+// SendNotification provide send notification.
+func SendNotification(
+	ctx context.Context,
+	req qcore.QueuedMessage,
+	cfg *config.ConfYaml,
+) (resp *ResponsePush, err error) {
 	v, ok := req.(*PushNotification)
 	if !ok {
 		if err = json.Unmarshal(req.Bytes(), &v); err != nil {
-			return
+			return nil, err
 		}
 	}
 
 	switch v.Platform {
 	case core.PlatFormIos:
-		resp, err = PushToIOS(v, cfg)
+		resp, err = PushToIOS(ctx, v, cfg)
 	case core.PlatFormAndroid:
-		resp, err = PushToAndroid(v, cfg)
+		resp, err = PushToAndroid(ctx, v, cfg)
 	case core.PlatFormHuawei:
-		resp, err = PushToHuawei(v, cfg)
+		resp, err = PushToHuawei(ctx, v, cfg)
 	}
 
 	if cfg.Core.FeedbackURL != "" {
 		for _, l := range resp.Logs {
-			err := DispatchFeedback(l, cfg.Core.FeedbackURL, cfg.Core.FeedbackTimeout)
+			err := DispatchFeedback(ctx, l, cfg.Core.FeedbackURL, cfg.Core.FeedbackTimeout, cfg.Core.FeedbackHeader)
 			if err != nil {
 				logx.LogError.Error(err)
 			}
 		}
 	}
 
-	return
+	return resp, err
 }
 
 // Run send notification
-var Run = func(cfg *config.ConfYaml) func(ctx context.Context, msg queue.QueuedMessage) error {
-	return func(ctx context.Context, msg queue.QueuedMessage) error {
-		_, err := SendNotification(msg, cfg)
+var Run = func(cfg *config.ConfYaml) func(ctx context.Context, msg qcore.QueuedMessage) error {
+	return func(ctx context.Context, msg qcore.QueuedMessage) error {
+		_, err := SendNotification(ctx, msg, cfg)
 		return err
 	}
 }

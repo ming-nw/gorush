@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/tls"
 	"encoding/base64"
@@ -30,6 +31,12 @@ var (
 	tcpKeepAlive    = 60 * time.Second
 )
 
+const (
+	dotP8  = ".p8"
+	dotPEM = ".pem"
+	dotP12 = ".p12"
+)
+
 var doOnce sync.Once
 
 // DialTLS is the default dial function for creating TLS connections for
@@ -52,7 +59,7 @@ type Sound struct {
 }
 
 // InitAPNSClient use for initialize APNs Client.
-func InitAPNSClient(cfg *config.ConfYaml) error {
+func InitAPNSClient(ctx context.Context, cfg *config.ConfYaml) error {
 	if cfg.Ios.Enabled {
 		var err error
 		var authKey *ecdsa.PrivateKey
@@ -63,11 +70,11 @@ func InitAPNSClient(cfg *config.ConfYaml) error {
 			ext = filepath.Ext(cfg.Ios.KeyPath)
 
 			switch ext {
-			case ".p12":
+			case dotP12:
 				certificateKey, err = certificate.FromP12File(cfg.Ios.KeyPath, cfg.Ios.Password)
-			case ".pem":
+			case dotPEM:
 				certificateKey, err = certificate.FromPemFile(cfg.Ios.KeyPath, cfg.Ios.Password)
-			case ".p8":
+			case dotP8:
 				authKey, err = token.AuthKeyFromFile(cfg.Ios.KeyPath)
 			default:
 				err = errors.New("wrong certificate key extension")
@@ -87,11 +94,11 @@ func InitAPNSClient(cfg *config.ConfYaml) error {
 				return err
 			}
 			switch ext {
-			case ".p12":
+			case dotP12:
 				certificateKey, err = certificate.FromP12Bytes(key, cfg.Ios.Password)
-			case ".pem":
+			case dotPEM:
 				certificateKey, err = certificate.FromPemBytes(key, cfg.Ios.Password)
-			case ".p8":
+			case dotP8:
 				authKey, err = token.AuthKeyFromBytes(key)
 			default:
 				err = errors.New("wrong certificate key type")
@@ -104,9 +111,9 @@ func InitAPNSClient(cfg *config.ConfYaml) error {
 			}
 		}
 
-		if ext == ".p8" {
+		if ext == dotP8 {
 			if cfg.Ios.KeyID == "" || cfg.Ios.TeamID == "" {
-				msg := "You should provide ios.KeyID and ios.TeamID for P8 token"
+				msg := "you should provide ios.KeyID and ios.TeamID for p8 token"
 				logx.LogError.Error(msg)
 				return errors.New(msg)
 			}
@@ -154,11 +161,13 @@ func newApnsClient(cfg *config.ConfYaml, certificate tls.Certificate) (*apns2.Cl
 		return client, nil
 	}
 
+	//nolint:gosec
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{certificate},
 	}
 
 	if len(certificate.Certificate) > 0 {
+		//nolint:staticcheck
 		tlsConfig.BuildNameToCertificate()
 	}
 
@@ -217,72 +226,96 @@ func configureHTTP2ConnHealthCheck(h2Transport *http2.Transport) {
 	h2Transport.PingTimeout = 1 * time.Second
 }
 
-func iosAlertDictionary(payload *payload.Payload, req *PushNotification) *payload.Payload {
+func iosAlertDictionary(notificationPayload *payload.Payload, req *PushNotification) *payload.Payload {
 	// Alert dictionary
 
 	if len(req.Title) > 0 {
-		payload.AlertTitle(req.Title)
+		notificationPayload.AlertTitle(req.Title)
+	}
+
+	if len(req.InterruptionLevel) > 0 {
+		notificationPayload.InterruptionLevel(payload.EInterruptionLevel(req.InterruptionLevel))
 	}
 
 	if len(req.Message) > 0 && len(req.Title) > 0 {
-		payload.AlertBody(req.Message)
+		notificationPayload.AlertBody(req.Message)
 	}
 
 	if len(req.Alert.Title) > 0 {
-		payload.AlertTitle(req.Alert.Title)
+		notificationPayload.AlertTitle(req.Alert.Title)
 	}
 
 	// Apple Watch & Safari display this string as part of the notification interface.
 	if len(req.Alert.Subtitle) > 0 {
-		payload.AlertSubtitle(req.Alert.Subtitle)
+		notificationPayload.AlertSubtitle(req.Alert.Subtitle)
 	}
 
 	if len(req.Alert.TitleLocKey) > 0 {
-		payload.AlertTitleLocKey(req.Alert.TitleLocKey)
+		notificationPayload.AlertTitleLocKey(req.Alert.TitleLocKey)
 	}
 
 	if len(req.Alert.LocArgs) > 0 {
-		payload.AlertLocArgs(req.Alert.LocArgs)
+		notificationPayload.AlertLocArgs(req.Alert.LocArgs)
 	}
 
 	if len(req.Alert.TitleLocArgs) > 0 {
-		payload.AlertTitleLocArgs(req.Alert.TitleLocArgs)
+		notificationPayload.AlertTitleLocArgs(req.Alert.TitleLocArgs)
 	}
 
 	if len(req.Alert.Body) > 0 {
-		payload.AlertBody(req.Alert.Body)
+		notificationPayload.AlertBody(req.Alert.Body)
 	}
 
 	if len(req.Alert.LaunchImage) > 0 {
-		payload.AlertLaunchImage(req.Alert.LaunchImage)
+		notificationPayload.AlertLaunchImage(req.Alert.LaunchImage)
 	}
 
 	if len(req.Alert.LocKey) > 0 {
-		payload.AlertLocKey(req.Alert.LocKey)
+		notificationPayload.AlertLocKey(req.Alert.LocKey)
 	}
 
 	if len(req.Alert.Action) > 0 {
-		payload.AlertAction(req.Alert.Action)
+		notificationPayload.AlertAction(req.Alert.Action)
 	}
 
 	if len(req.Alert.ActionLocKey) > 0 {
-		payload.AlertActionLocKey(req.Alert.ActionLocKey)
+		notificationPayload.AlertActionLocKey(req.Alert.ActionLocKey)
 	}
 
 	// General
 	if len(req.Category) > 0 {
-		payload.Category(req.Category)
+		notificationPayload.Category(req.Category)
 	}
 
 	if len(req.Alert.SummaryArg) > 0 {
-		payload.AlertSummaryArg(req.Alert.SummaryArg)
+		notificationPayload.AlertSummaryArg(req.Alert.SummaryArg)
 	}
 
 	if req.Alert.SummaryArgCount > 0 {
-		payload.AlertSummaryArgCount(req.Alert.SummaryArgCount)
+		notificationPayload.AlertSummaryArgCount(req.Alert.SummaryArgCount)
 	}
 
-	return payload
+	if len(req.ContentState) > 0 {
+		notificationPayload.SetContentState(req.ContentState)
+	}
+
+	if req.StaleDate > 0 {
+		notificationPayload.SetStaleDate(req.StaleDate)
+	}
+
+	if req.DismissalDate > 0 {
+		notificationPayload.SetDismissalDate(req.DismissalDate)
+	}
+
+	if len(req.Event) > 0 {
+		notificationPayload.SetEvent(payload.ELiveActivityEvent(req.Event))
+	}
+
+	if req.Timestamp > 0 {
+		notificationPayload.SetTimestamp(req.Timestamp)
+	}
+
+	return notificationPayload
 }
 
 // GetIOSNotification use for define iOS notification.
@@ -302,7 +335,7 @@ func GetIOSNotification(req *PushNotification) *apns2.Notification {
 	if len(req.Priority) > 0 {
 		if req.Priority == "normal" {
 			notification.Priority = apns2.PriorityLow
-		} else if req.Priority == "high" {
+		} else if req.Priority == HIGH {
 			notification.Priority = apns2.PriorityHigh
 		}
 	}
@@ -400,7 +433,7 @@ func getApnsClient(cfg *config.ConfYaml, req *PushNotification) (client *apns2.C
 }
 
 // PushToIOS provide send notification to APNs server.
-func PushToIOS(req *PushNotification, cfg *config.ConfYaml) (resp *ResponsePush, err error) {
+func PushToIOS(ctx context.Context, req *PushNotification, cfg *config.ConfYaml) (resp *ResponsePush, err error) {
 	logx.LogAccess.Debug("Start push notification for iOS")
 
 	var (
@@ -429,7 +462,7 @@ Retry:
 			notification.DeviceToken = token
 
 			// send ios notification
-			res, err := client.Push(&notification)
+			res, err := client.PushWithContext(ctx, &notification)
 			if err != nil || (res != nil && res.StatusCode != http.StatusOK) {
 				if err == nil {
 					// error message:

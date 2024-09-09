@@ -1,3 +1,4 @@
+//go:build !lambda
 // +build !lambda
 
 package router
@@ -27,6 +28,7 @@ func RunHTTPServer(ctx context.Context, cfg *config.ConfYaml, q *queue.Queue, s 
 	}
 
 	if len(s) == 0 {
+		//nolint:gosec
 		server = &http.Server{
 			Addr:    cfg.Core.Address + ":" + cfg.Core.Port,
 			Handler: routerEngine(cfg, q),
@@ -40,7 +42,7 @@ func RunHTTPServer(ctx context.Context, cfg *config.ConfYaml, q *queue.Queue, s 
 		return startServer(ctx, autoTLSServer(cfg, q), cfg)
 	} else if cfg.Core.SSL {
 		config := &tls.Config{
-			MinVersion: tls.VersionTLS10,
+			MinVersion: tls.VersionTLS12,
 		}
 
 		if config.NextProtos == nil {
@@ -48,6 +50,7 @@ func RunHTTPServer(ctx context.Context, cfg *config.ConfYaml, q *queue.Queue, s 
 		}
 
 		config.Certificates = make([]tls.Certificate, 1)
+		//nolint:gocritic
 		if cfg.Core.CertPath != "" && cfg.Core.KeyPath != "" {
 			config.Certificates[0], err = tls.LoadX509KeyPair(cfg.Core.CertPath, cfg.Core.KeyPath)
 			if err != nil {
