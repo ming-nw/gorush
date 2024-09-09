@@ -1,3 +1,18 @@
+## Gorush (NW)
+If a new version of Gorush is available, it's recommended to pull the latest Docker image and update our deployment. Here's how to check for and update the latest version:
+
+```bash
+# Check for the latest Gorush version:
+docker pull appleboy/gorush:latest
+
+# If the version has been updated (e.g., to 1.18), push the new image to our GCP Artifact Registry:
+docker pull appleboy/gorush:1.18
+docker tag appleboy/gorush:latest asia.gcr.io/bustling-sunset-220007/newswav-gorush:nw-v1.18
+docker push asia.gcr.io/bustling-sunset-220007/newswav-gorush:nw-v1.18
+```
+
+Update the Gorush deployment to use the new version by modifying the Helm values file (gorush-values.yaml) to reflect the new image tag and then run the upgrade command again.
+
 ## GORUSH CONFIGMAP
 `helm upgrade -i -n gorush -f gorush-cm.yaml gorush-config oci://asia-southeast1-docker.pkg.dev/nw-development-329802/newswav-helm/newswav-app --history-max 2`
 

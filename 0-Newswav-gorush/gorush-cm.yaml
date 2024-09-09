@@ -17,7 +17,7 @@ configmap:
           GORUSH_API_CONFIG_URI: /api/secure/config
 
           GORUSH_ANDROID_MAX_RETRY: "1"
-          
+
           GORUSH_IOS_ENABLED: "true"
           GORUSH_IOS_KEY_TYPE: pem
           GORUSH_IOS_KEY_PATH: "" 
