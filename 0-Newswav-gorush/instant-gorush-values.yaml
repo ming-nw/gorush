@@ -7,7 +7,7 @@ tier: frontend
 namespace: gorush
 
 image:
-  repository: asia.gcr.io/bustling-sunset-220007/newswav-gorush
+  repository: asia-southeast1-docker.pkg.dev/bustling-sunset-220007/newswav-gorush/newswav-gorush
   tag: nw-v1.18
 
 resources:
