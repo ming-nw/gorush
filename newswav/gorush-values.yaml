@@ -1,21 +1,15 @@
-#HUAWEI-PN (JOBS-V3)
+#PN (JOBS-V3)
 #DEPLOYMENT
-fullnameOverride: hms-gorush
-nameOverride: hms-gorush
-replicaCount: 10
+fullnameOverride: gorush
+nameOverride: gorush
+replicaCount: 40
 tier: frontend
 namespace: gorush
 
 image:
-  repository: asia.gcr.io/bustling-sunset-220007/newswav-gorush
-  tag: nw-v1.18
+  repository: asia-southeast1-docker.pkg.dev/bustling-sunset-220007/newswav-gorush/newswav-gorush
+  tag: latest
 
-appEnv:
-- name: GORUSH_IOS_ENABLED
-  value: "false"
-- name: GORUSH_ANDROID_ENABLED
-  value: "false"
-  
 resources:
   limits:
     memory: 500Mi
@@ -58,14 +52,14 @@ service:
 ingress:
   enabled: true
   annotations:
-    kubernetes.io/ingress.global-static-ip-name: hms-gorush-ingress-ip
+    kubernetes.io/ingress.global-static-ip-name: new-gorush-ingress-ip
   tls: 
    -  secretName: ssl-wildcard-newswav
       hosts:
-        - hms-gorush.newswav.com
+        - gorush.newswav.com
 
   hosts:
-  - host: hms-gorush.newswav.com
+  - host: gorush.newswav.com
     paths:
       - path: /
         pathType: Prefix

@@ -1,14 +1,14 @@
-#COMMENT-SVC 
+#INSTANT-PN (JOBS-V3)
 #DEPLOYMENT
-fullnameOverride: misc-gorush
-nameOverride: misc-gorush
-replicaCount: 10
+fullnameOverride: instant-gorush
+nameOverride: instant-gorush
+replicaCount: 40
 tier: frontend
 namespace: gorush
 
 image:
-  repository: asia.gcr.io/bustling-sunset-220007/newswav-gorush
-  tag: nw-v1.18
+  repository: asia-southeast1-docker.pkg.dev/bustling-sunset-220007/newswav-gorush/newswav-gorush
+  tag: latest
 
 resources:
   limits:
@@ -52,14 +52,14 @@ service:
 ingress:
   enabled: true
   annotations:
-    kubernetes.io/ingress.global-static-ip-name: misc-gorush-ingress-ip
+    kubernetes.io/ingress.global-static-ip-name: instant-gorush-ingress-ip
   tls: 
    -  secretName: ssl-wildcard-newswav
       hosts:
-        - misc-gorush.newswav.com
+        - instant-gorush.newswav.com
 
   hosts:
-  - host: misc-gorush.newswav.com
+  - host: instant-gorush.newswav.com
     paths:
       - path: /
         pathType: Prefix

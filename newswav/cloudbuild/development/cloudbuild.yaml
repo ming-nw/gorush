@@ -1,0 +1,24 @@
+timeout: 1200s
+substitutions:
+  _GORUSH_IMAGE_PATH: asia-southeast1-docker.pkg.dev/nw-development-329802/newswav-gorush/newswav-gorush:latest
+  _PROJECT_APP_NAME: newswav-gorush
+
+steps:
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: Deploy
+    args:
+      - run
+      - deploy
+      - $_PROJECT_APP_NAME
+      - --image=$_GORUSH_IMAGE_PATH
+      - --region=asia-southeast1
+      - --network=staging-vpc-asse1-nw
+      - --subnet=staging-subnet-asse1-nw
+      - --platform=managed
+      - --allow-unauthenticated
+      - --project=$PROJECT_ID
+      - --port=8088
+      - --service-account=newswav-gorush@nw-development-329802.iam.gserviceaccount.com
+      - --env-vars-file=newswav/cloudbuild/development/config-variables.yaml
+      - --update-secrets=GORUSH_ANDROID_CREDENTIAL=firebase-admin-credential:latest
+      - --update-secrets=GORUSH_STAT_REDIS_PASSWORD=redis-password:latest
