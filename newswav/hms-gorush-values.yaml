@@ -8,7 +8,7 @@ namespace: gorush
 
 image:
   repository: asia-southeast1-docker.pkg.dev/bustling-sunset-220007/newswav-gorush/newswav-gorush
-  tag: nw-v1.18
+  tag: latest
 
 appEnv:
 - name: GORUSH_IOS_ENABLED
